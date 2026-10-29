@@ -179,6 +179,35 @@ class RFFLayer(jit.ScriptModule):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = 2 * torch.pi * self.layer(x)
         return torch.cat([torch.sin(x), torch.cos(x)], dim=-1)
+    
+
+class RFFLayer_spatiotemp(jit.ScriptModule):
+    def __init__(
+        self,
+        input_channel_size,
+        mapping_size, #size of the output
+        sigma,
+        sigma_time
+    ):
+        super(RFFLayer_spatiotemp, self).__init__()
+        self.layer_temp = nn.Linear(input_channel_size - 2, mapping_size // 4, bias=False)
+        B = torch.normal(0, sigma_time, (mapping_size // 4, input_channel_size - 2))
+        self.layer_temp.weight = nn.Parameter(B, requires_grad=False)
+        self.layer_temp.requires_grad_(False)
+
+        self.layer_space = nn.Linear(2, mapping_size // 4, bias=False)
+        B = torch.normal(0, sigma, (mapping_size // 4, 2))
+        self.layer_space.weight = nn.Parameter(B, requires_grad=False)
+        self.layer_space.requires_grad_(False)
+
+    @jit.script_method
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x_temp = self.layer_temp(x[...,:-2])
+        x_space = self.layer_space(x[...,-2:])
+        x = torch.cat([x_temp, x_space], dim = -1)
+        x = 2 * torch.pi * x
+        return torch.cat([torch.sin(x), torch.cos(x)], dim=-1)
+    
 
 
 @torch.jit.script
@@ -537,7 +566,8 @@ def linear_fn(text: str, hp: object, act: Optional[Type[nn.Module]]) -> Callable
             sigma0=hp.model["sigma0"],
             trainable=hp.model["trainable"],
         )
-    elif hp.model["name"] == "RFF":
+
+    elif hp.model["name"] == "RFF" or hp.model["name"] == "RFF_st":
         if text == "HE":
             return partial(Linear, act=act)
         elif text == "Glorot":

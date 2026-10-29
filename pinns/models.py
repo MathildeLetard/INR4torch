@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .parser import AttrDict
 
-from .model_utils import linear_fn, RFFLayer, SkipLayer, MFN, ModifiedMLP, KAN
+from .model_utils import linear_fn, RFFLayer, RFFLayer_spatiotemp, SkipLayer, MFN, ModifiedMLP, KAN
 
 
 class INR(nn.Module):
@@ -58,7 +58,7 @@ class INR(nn.Module):
         Sets self.act to the appropriate nn.Module class for RFF and MFN
         architectures (Tanh or ReLU), or None for SIREN/WIRES/KAN.
         """
-        if self.name == "RFF" or self.name == "MFN":
+        if self.name == "RFF" or self.name == "RFF_st" or self.name == "MFN":
             if self.hp.model["activation"] == "tanh":
                 self.act = nn.Tanh
             elif self.hp.model["activation"] == "relu":
@@ -103,13 +103,14 @@ class INR(nn.Module):
             + [self.output_size]
         )
         last = len(layer_width)
-        if self.name == "RFF":
+        if self.name == "RFF" or self.name == "RFF_st":
             layer_width[1] = self.hp.model["mapping_size"]
         for i, width_i in enumerate(layer_width[:-1]):
             is_last = i == last - 2
-
             if i == 0 and self.name == "RFF":
-                layer = RFFLayer(width_i, layer_width[i + 1], self.hp.model["scale"])
+                layer = RFFLayer(width_i, layer_width[i+1], self.hp.model["scale"])
+            elif i == 0 and self.name == "RFF_st":
+                layer = RFFLayer_spatiotemp(width_i, layer_width[i+1], self.hp.model["scale"], self.hp.model["scale_time"])
             elif i == 0 and self.name in ["SIREN", "WIRES", "MFN"]:
                 layer = linear_layer_fn(width_i, layer_width[i + 1], is_first=True)
             else:
